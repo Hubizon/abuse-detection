@@ -1,0 +1,47 @@
+{
+    "experiment_name": "baseline_tfidf_logistic",
+    "wandb_project": "abuse-detection",
+    
+    "data": {
+        "train_path": "../data/binarized/train.csv",
+        "val_path": "../data/binarized/val.csv",
+        "test_path": "../data/binarized/test.csv"
+    },
+
+    "text_cleaner": {
+        "lowercase": true,
+        "remove_punctuation": true,
+        "remove_numbers": false,
+        "remove_extra_whitespace": true
+    },
+    "feature_extractor": {
+        "method": "tfidf",
+        "max_features": 10000,
+        "ngram_range": [1, 2],
+        "min_df": 2,
+        "max_df": 0.95,
+        "random_state": 42
+    },
+    "model": {
+        "name": "baseline",
+        "algorithm": "logistic_regression",
+        "kwargs": {
+            "random_state": 42,
+            "max_iter": 1000,
+            "class_weight": "balanced",
+            "C": 1.0
+        }
+    },
+
+    "text_column": "comment_text",
+    "targets": [
+        "target",
+        "obscene",
+        "identity_attack",
+        "insult",
+        "threat",
+        "sexual_explicit"
+    ],
+
+    "output_dir": "../outputs"
+}

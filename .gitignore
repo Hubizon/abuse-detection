@@ -1,5 +1,11 @@
 /.venv/
+/.vscode/
 /.idea/
+/.pytest_cache/
 /data/
+**/__pycache__/
+**/outputs/
+**/wandb/
 
+*.pyc
 .env

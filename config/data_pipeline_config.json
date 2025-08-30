@@ -1,18 +1,27 @@
 {
   "paths": {
-    "raw_data_dir": "./data/raw",
-    "processed_data_dir": "./data/processed",
-    "holdout_dir": "./data/processed/holdout"
+    "raw_data_dir": "data/raw",
+    "processed_data_dir": "data/processed",
+    "holdout_dir": "data/processed/holdout",
+    "binarized_data_dir": "data/binarized",
+    "binarized_holdout_dir": "data/binarized/holdout"
   },
   "dataset": {
     "name": "jigsaw-unintended-bias-in-toxicity-classification",
     "file_name": "train.csv",
     "columns_to_keep": [
       "id",
-      "comment_text", 
+      "comment_text",
       "created_date",
       "target",
-      "severe_toxicity",
+      "obscene",
+      "identity_attack",
+      "insult",
+      "threat",
+      "sexual_explicit"
+    ],
+    "binarized_columns": [
+      "target",
       "obscene",
       "identity_attack",
       "insult",
@@ -25,6 +34,7 @@
     "holdout_month_start": 6,
     "holdout_month_end": 10,
     "stratify_threshold": 0.4,
+    "binarize_threshold": 0.5,
     "test_size": 0.2,
     "val_test_ratio": 0.5,
     "random_state": 42

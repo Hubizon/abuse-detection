@@ -1,20 +1,16 @@
-import os
-import zipfile
-import logging
-from pathlib import Path
-from typing import Union, Dict, Tuple, Optional
-from datetime import datetime
-import json
-
-import pandas as pd
-from sklearn.model_selection import train_test_split
 import dotenv
+import json
+import logging
+import os
+import pandas as pd
+import zipfile
+from datetime import datetime
+from pathlib import Path
+from sklearn.model_selection import train_test_split
+from typing import Union, Dict, Tuple, Optional
 
 # Configure logging (to print logs and errors in a better way)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load environment variables (needed for Kaggle download)
@@ -23,7 +19,7 @@ dotenv.load_dotenv()
 
 class DataPipelineConfig:
     """Configuration class for data pipeline parameters."""
-    
+
     def __init__(self, config_path: str):
         """Initialize configuration from JSON file."""
         if Path(config_path).exists():
@@ -40,30 +36,30 @@ class DataPipelineConfig:
         except Exception as e:
             logger.error(f"Failed to load config from {config_path}: {e}")
             raise
-    
+
     def get(self, key_path: str, default=None):
         """Get configuration value using dot notation (e.g., 'paths.raw_data_dir')."""
         keys = key_path.split('.')
         value = self.config
-        
+
         for key in keys:
             if isinstance(value, dict) and key in value:
                 value = value[key]
             else:
                 return default
-        
+
         return value
 
 
 class KaggleDataDownloader:
     """Handle Kaggle dataset downloads with proper error handling."""
-    
+
     def __init__(self):
         """Initialize Kaggle API if available."""
         self.kaggle = None
         # Don't import kaggle here - do it lazily when needed
         logger.info("KaggleDataDownloader initialized (API will be loaded when needed)")
-    
+
     def download_file(self, file_name: str, path: Path, dataset_name: str) -> bool:
         """
         Download file from Kaggle competition.
@@ -87,7 +83,7 @@ class KaggleDataDownloader:
             except Exception as e:
                 logger.warning(f"Failed to initialize Kaggle API: {e}")
                 return False
-        
+
         zip_file_name = f"{file_name}.zip"
         zip_file_path = path / zip_file_name
         extracted_file_path = path / file_name
@@ -100,9 +96,9 @@ class KaggleDataDownloader:
         try:
             # Ensure download directory exists
             path.mkdir(parents=True, exist_ok=True)
-            
+
             logger.info(f"Downloading {file_name} from {dataset_name}...")
-            
+
             # Download from Kaggle
             self.kaggle.api.competition_download_file(
                 dataset_name,
@@ -117,13 +113,13 @@ class KaggleDataDownloader:
             # Extract the zip file
             with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
                 zip_ref.extractall(path)
-                    
+
             # Clean up zip file
             os.remove(zip_file_path)
             logger.info(f"Downloaded and extracted {file_name} successfully")
-                
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to download {file_name}: {str(e)}")
             return False
@@ -131,11 +127,11 @@ class KaggleDataDownloader:
 
 class DataProcessor:
     """Handle data cleaning and preprocessing operations."""
-    
+
     def __init__(self, config: DataPipelineConfig):
         """Initialize with configuration."""
         self.config = config
-    
+
     def load_and_clean_data(self, file_path: Path) -> pd.DataFrame:
         """
         Load and clean raw data.
@@ -147,46 +143,46 @@ class DataProcessor:
             Cleaned DataFrame
         """
         logger.info(f"Loading data from {file_path}")
-        
+
         try:
             # Load raw data
             raw_df = pd.read_csv(file_path)
             logger.info(f"Loaded {len(raw_df):,} rows from raw data")
-            
+
             # Select specified columns
             columns_to_keep = self.config.get('dataset.columns_to_keep')
             available_columns = [col for col in columns_to_keep if col in raw_df.columns]
-            
+
             cleaned_df = raw_df[available_columns].copy()
-            
+
             # Drop rows with missing values
             initial_rows = len(cleaned_df)
             cleaned_df = cleaned_df.dropna()
             dropped_rows = initial_rows - len(cleaned_df)
-            
+
             if dropped_rows > 0:
                 logger.info(f"Dropped {dropped_rows:,} rows with missing values")
-            
+
             # Clean datetime column if present
             if 'created_date' in cleaned_df.columns:
                 cleaned_df['created_date'] = pd.to_datetime(
-                    cleaned_df['created_date'], 
+                    cleaned_df['created_date'],
                     errors='coerce'
                 ).dt.tz_localize(None)
-                
+
                 # Drop rows where datetime conversion failed
                 datetime_nulls = cleaned_df['created_date'].isnull().sum()
                 if datetime_nulls > 0:
                     logger.warning(f"Found {datetime_nulls} rows with invalid dates")
                     cleaned_df = cleaned_df.dropna(subset=['created_date'])
-            
+
             logger.info(f"Data cleaning completed. Final dataset: {len(cleaned_df):,} rows")
             return cleaned_df
-            
+
         except Exception as e:
             logger.error(f"Failed to load and clean data: {str(e)}")
             raise
-    
+
     def create_train_val_test_split(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
         Create train/validation/test splits with stratification.
@@ -198,12 +194,12 @@ class DataProcessor:
             Tuple of (train_df, val_df, test_df)
         """
         logger.info("Creating train/validation/test splits...")
-        
+
         try:
             # Filter data for main split (exclude holdout period)
             holdout_year = self.config.get('processing.holdout_year')
             holdout_start = self.config.get('processing.holdout_month_start')
-            
+
             if 'created_date' in df.columns and holdout_year and holdout_start:
                 cutoff_date = pd.Timestamp(f'{holdout_year}-{holdout_start:02d}-01')
                 train_val_test_df = df[df['created_date'] < cutoff_date].copy()
@@ -211,24 +207,24 @@ class DataProcessor:
             else:
                 train_val_test_df = df.copy()
                 logger.warning("No date filtering applied - using all data for splits")
-            
+
             # Create binary labels for stratification
             stratify_threshold = self.config.get('processing.stratify_threshold', 0.5)
             train_val_test_df['stratify_label'] = (
-                train_val_test_df['target'] >= stratify_threshold
+                    train_val_test_df['target'] >= stratify_threshold
             ).astype(int)
-            
+
             # First split: train vs (val + test)
             test_size = self.config.get('processing.test_size', 0.2)
             random_state = self.config.get('processing.random_state', 42)
-            
+
             train_set, val_test_set = train_test_split(
                 train_val_test_df,
                 test_size=test_size,
                 stratify=train_val_test_df['stratify_label'],
                 random_state=random_state
             )
-            
+
             # Second split: val vs test
             val_test_ratio = self.config.get('processing.val_test_ratio', 0.5)
             val_set, test_set = train_test_split(
@@ -237,28 +233,29 @@ class DataProcessor:
                 stratify=val_test_set['stratify_label'],
                 random_state=random_state
             )
-            
+
             # Remove stratification column
             for dataset in [train_set, val_set, test_set]:
                 dataset.drop(columns=['stratify_label'], inplace=True)
-            
+
             logger.info(f"Dataset splits created:")
             logger.info(f"  Training: {len(train_set):,} rows")
             logger.info(f"  Validation: {len(val_set):,} rows")
             logger.info(f"  Test: {len(test_set):,} rows")
-            
+
             # Log class distributions
             for name, dataset in [("Train", train_set), ("Validation", val_set), ("Test", test_set)]:
                 pos_rate = (dataset['target'] >= stratify_threshold).mean()
                 logger.info(f"  {name} positive rate: {pos_rate:.3f}")
-            
+
             return train_set, val_set, test_set
-            
+
         except Exception as e:
             logger.error(f"Failed to create data splits: {str(e)}")
             raise
-    
-    def create_holdout_splits(self, df: pd.DataFrame, output_dir: Path) -> Dict[str, int]:
+
+    def create_holdout_splits(self, df: pd.DataFrame, output_dir: Path) -> Tuple[
+        Dict[str, int], Dict[str, pd.DataFrame]]:
         """
         Create monthly holdout datasets.
         
@@ -267,48 +264,102 @@ class DataProcessor:
             output_dir: Directory to save holdout files
             
         Returns:
-            Dictionary with month -> sample count
+            Tuple of (holdout_stats dict, holdout_dataframes dict)
         """
         logger.info("Creating holdout splits by month...")
-        
+
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             holdout_year = self.config.get('processing.holdout_year')
             holdout_start = self.config.get('processing.holdout_month_start')
             holdout_end = self.config.get('processing.holdout_month_end')
-            
+
             holdout_stats = {}
-            
+            holdout_dataframes = {}
+
             for month in range(holdout_start, holdout_end + 1):
                 # Filter data for this month
                 month_mask = (
-                    (df['created_date'].dt.year == holdout_year) & 
-                    (df['created_date'].dt.month == month)
+                        (df['created_date'].dt.year == holdout_year) &
+                        (df['created_date'].dt.month == month)
                 )
                 month_data = df[month_mask].copy()
-                
+
                 if len(month_data) > 0:
                     # Save to file
                     filename = f'{holdout_year}_{month:02d}.csv'
                     filepath = output_dir / filename
                     month_data.to_csv(filepath, index=False)
-                    
+
+                    # Store stats and dataframe
                     holdout_stats[month] = len(month_data)
+                    holdout_dataframes[filename] = month_data
                     logger.info(f"  {filename}: {len(month_data):,} rows")
                 else:
                     logger.warning(f"No data found for {holdout_year}-{month:02d}")
-            
-            return holdout_stats
-            
+
+            return holdout_stats, holdout_dataframes
+
         except Exception as e:
             logger.error(f"Failed to create holdout splits: {str(e)}")
             raise
 
 
+class DataBinarizer:
+    """Handle binarization of toxicity labels with configurable thresholds."""
+
+    def __init__(self, config: DataPipelineConfig):
+        """Initialize with configuration."""
+        self.config = config
+        self.threshold = config.get('processing.binarize_threshold', 0.5)
+        self.target_columns = config.get('dataset.binarized_columns', [])
+
+    def binarize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Binarize toxicity columns in a DataFrame.
+        
+        Args:
+            df: DataFrame to binarize
+            
+        Returns:
+            DataFrame with binarized columns
+        """
+        result_df = df.copy()
+
+        for col in self.target_columns:
+            result_df[col] = (result_df[col] >= self.threshold).astype(int)
+
+        return result_df
+
+    def binarize_and_save(self, df: pd.DataFrame, output_path: Path) -> pd.DataFrame:
+        """
+        Binarize DataFrame and save to file.
+        
+        Args:
+            df: DataFrame to binarize
+            output_path: Path to save binarized data
+            
+        Returns:
+            Binarized DataFrame
+        """
+        binarized_df = self.binarize_dataframe(df)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        binarized_df.to_csv(output_path, index=False)
+        return binarized_df
+
+    def log_positive_rates(self, datasets: Dict[str, pd.DataFrame]) -> None:
+        """Log positive rates for binarized datasets."""
+        for name, df in datasets.items():
+            available_cols = [col for col in self.target_columns if col in df.columns]
+            rates = {col: df[col].mean() for col in available_cols}
+            rate_str = ", ".join(f"{k}:{v:.3f}" for k, v in rates.items())
+            logger.info(f"Binarized positive rates [{name}]: {rate_str}")
+
+
 class DataPipeline:
     """Main data pipeline orchestrator."""
-    
+
     def __init__(self, config: Union[str, DataPipelineConfig, None] = None):
         """
         Initialize data pipeline.
@@ -322,14 +373,15 @@ class DataPipeline:
             self.config = config
         else:
             self.config = DataPipelineConfig()
-        
+
         self.downloader = KaggleDataDownloader()
         self.processor = DataProcessor(self.config)
+        self.binarizer = DataBinarizer(self.config)
         self.pipeline_metadata = {
             'start_time': datetime.now().isoformat(),
             'config': self.config.config
         }
-    
+
     def run_full_pipeline(self, download_data: bool = True, save_metadata: bool = True) -> Dict:
         """
         Run the complete data pipeline.
@@ -342,48 +394,66 @@ class DataPipeline:
             Pipeline execution results
         """
         logger.info("Starting data pipeline execution...")
-        
+
         try:
             # Setup paths
-            raw_data_dir = Path(self.config.get('paths.raw_data_dir'))
-            processed_data_dir = Path(self.config.get('paths.processed_data_dir'))
-            holdout_dir = Path(self.config.get('paths.holdout_dir'))
-            
+            project_root = Path(__file__).resolve().parent.parent
+            raw_data_dir = project_root / self.config.get('paths.raw_data_dir')
+            processed_data_dir = project_root / self.config.get('paths.processed_data_dir')
+            binarized_data_dir = project_root / self.config.get('paths.binarized_data_dir')
+            holdout_dir = project_root / self.config.get('paths.holdout_dir')
+            binarized_holdout_dir = project_root / self.config.get('paths.binarized_holdout_dir')
+
             # Download data (if requested and available)
             if download_data:
                 dataset_name = self.config.get('dataset.name')
                 file_name = self.config.get('dataset.file_name')
-                
+
                 download_success = self.downloader.download_file(
                     file_name, raw_data_dir, dataset_name
                 )
-                
+
                 if not download_success:
                     logger.warning("Data download failed, proceeding with existing files")
-            
+
             # Load and clean data
             raw_file_path = raw_data_dir / self.config.get('dataset.file_name')
-            
             if not raw_file_path.exists():
-                raise FileNotFoundError(f"Raw data file not found: {raw_file_path}")
-            
+                raise FileNotFoundError(f"Raw data file not found: {raw_file_path} (expected at {raw_data_dir})")
+
             cleaned_df = self.processor.load_and_clean_data(raw_file_path)
-            
+
             # Create train/val/test splits
             train_df, val_df, test_df = self.processor.create_train_val_test_split(cleaned_df)
-            
-            # Save main datasets
+
+            # Save original (continuous) datasets
             processed_data_dir.mkdir(parents=True, exist_ok=True)
-            
             train_df.to_csv(processed_data_dir / 'train.csv', index=False)
             val_df.to_csv(processed_data_dir / 'val.csv', index=False)
             test_df.to_csv(processed_data_dir / 'test.csv', index=False)
-            
+
+            # Create and save binarized datasets
+            binarized_data_dir.mkdir(parents=True, exist_ok=True)
+            train_bin = self.binarizer.binarize_and_save(train_df, binarized_data_dir / 'train.csv')
+            val_bin = self.binarizer.binarize_and_save(val_df, binarized_data_dir / 'val.csv')
+            test_bin = self.binarizer.binarize_and_save(test_df, binarized_data_dir / 'test.csv')
+
+            # Log binarization results
+            binarized_datasets = {'Train': train_bin, 'Validation': val_bin, 'Test': test_bin}
+            self.binarizer.log_positive_rates(binarized_datasets)
+
             logger.info("Main datasets saved successfully")
-            
-            # Create holdout splits
-            holdout_stats = self.processor.create_holdout_splits(cleaned_df, holdout_dir)
-            
+
+            # Create holdout splits and binarize them
+            holdout_stats, holdout_dataframes = self.processor.create_holdout_splits(cleaned_df, holdout_dir)
+
+            # Binarize and save each holdout dataframe
+            binarized_holdout_dir.mkdir(parents=True, exist_ok=True)
+            for filename, df in holdout_dataframes.items():
+                output_path = binarized_holdout_dir / filename
+                self.binarizer.binarize_and_save(df, output_path)
+                logger.info(f"  Binarized {filename}")
+
             # Compile results
             results = {
                 'success': True,
@@ -399,26 +469,28 @@ class DataPipeline:
                     'train': str(processed_data_dir / 'train.csv'),
                     'validation': str(processed_data_dir / 'val.csv'),
                     'test': str(processed_data_dir / 'test.csv'),
-                    'holdout_dir': str(holdout_dir)
+                    'holdout_dir': str(holdout_dir),
+                    'binarized_dir': str(binarized_data_dir),
+                    'binarized_holdout_dir': str(binarized_holdout_dir)
                 }
             }
-            
+
             # Update pipeline metadata
             self.pipeline_metadata.update({
                 'end_time': datetime.now().isoformat(),
                 'results': results
             })
-            
+
             # Save metadata
             if save_metadata:
                 metadata_path = processed_data_dir / 'pipeline_metadata.json'
                 with open(metadata_path, 'w') as f:
                     json.dump(self.pipeline_metadata, f, indent=2)
                 logger.info(f"Pipeline metadata saved to {metadata_path}")
-            
+
             logger.info("Data pipeline completed successfully!")
             return results
-            
+
         except Exception as e:
             logger.error(f"Data pipeline failed: {str(e)}")
             self.pipeline_metadata.update({
@@ -432,31 +504,30 @@ class DataPipeline:
 def main():
     """Main function to run the data pipeline."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='Run abuse detection data pipeline')
     parser.add_argument('--config', type=str, default='config/data_pipeline_config.json')
     parser.add_argument('--no-download', action='store_true', default=False)
     parser.add_argument('--output-dir', type=str, default='data/processed')
-    
+
     args = parser.parse_args()
-    
+
     # Load configuration
     config = DataPipelineConfig(args.config)
-    
+
     # Override output directory if specified
     if args.output_dir:
+        # Only change processed/holdout; keep binarized as data/binarized unless user explicitly wants custom
         config.config['paths']['processed_data_dir'] = args.output_dir
         config.config['paths']['holdout_dir'] = f"{args.output_dir}/holdout"
-    
+
     # Run pipeline
     pipeline = DataPipeline(config)
     results = pipeline.run_full_pipeline(download_data=not args.no_download)
-    
+
     # Print summary
-    print("\n" + "=" * 50)
-    print("DATA PIPELINE SUMMARY")
-    print("=" * 50)
-    print("Pipeline completed successfully!")
+    print("\nData pipeline summary")
+    print("-" * 20)
     print(f"Total samples processed: {results['total_samples']:,}")
 
     print("Datasets created:")
@@ -470,9 +541,11 @@ def main():
 
     print("\nOutput files saved to:")
     for path_name, path_value in results['data_paths'].items():
-        if path_name != 'holdout_dir':
+        if path_name not in ['holdout_dir', 'binarized_holdout_dir']:
             print(f"  {path_name}: {path_value}")
     print(f"  Holdout files: {results['data_paths']['holdout_dir']}")
+    print(f"  Binarized holdout files: {results['data_paths']['binarized_holdout_dir']}")
+    print("Both continuous and binarized versions of all datasets have been created.")
 
 
 if __name__ == '__main__':
